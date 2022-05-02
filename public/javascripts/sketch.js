@@ -1,6 +1,9 @@
 let grid = {};
+
+// Cell size in pixels (width and height)
 let cellSize = 40;
 
+// Scale of the OpenSimplexNoise
 let noiseScale = 10;
 let openSimplex;
 
@@ -11,7 +14,10 @@ let openSimplex;
 // 4 means 0, 0.25, 0.5 and 0.75
 const levels = 2;
 
+// How many pixels the camera moves per update
 const cameraSpeed = 20;
+
+// How many cells the camera renders outside of its viewport
 const cameraPadding = 2;
 
 const mouseClickTypes = new Array(levels).fill(0).map((e, i) => i / (levels - 1));
