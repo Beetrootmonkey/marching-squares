@@ -19,7 +19,7 @@ const mouseClickTypes = new Array(levels).fill(0).map((e, i) => i / (levels - 1)
 // Which sample rate index to "place" on left-click
 let mouseClickIndex = 0;
 
-// Which sample rate value to "place" on left-click, can have values of the sampleRates array
+// Which sample rate value to "place" on left-click, can have values of the mouseClickTypes array
 let mouseClickType = 0;
 
 let mouseDown = false;
