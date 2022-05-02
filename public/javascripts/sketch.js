@@ -33,8 +33,10 @@ const cameraPadding = 2;
 
 const mouseClickTypes = new Array(levels).fill(0).map((e, i) => i / (levels - 1));
 
-// Which sample rate index to "place" on left-click
-let mouseClickIndex = 0;
+const pencilStrength = 0.5;
+
+// Radius in cell size excluding the middle (0 is a single cell, 1 is 3x3 cells, 2 is 5x5, ...)
+const pencilSize = 2;
 
 // Which sample rate value to "place" on left-click, can have values of the mouseClickTypes array
 let mouseClickType = 0;
@@ -70,7 +72,7 @@ const edge = (cornerA, cornerB, valueA, valueB) => {
   // return vtx(createVector());
   // const avg = 0.5;
   if (isNaN(avg)) {
-    console.log('avg == null:', valueA, valueB);
+    console.error('avg is NaN:', valueA, valueB);
   }
   vtx(cornerB.copy().sub(cornerA).mult(avg).add(cornerA));
 };
@@ -274,23 +276,62 @@ function setup() {
 
   screenToWorld = (x, y) => createVector(x, y).sub(viewport.offset);
   worldToScreen = (x, y) => createVector(x, y).add(viewport.offset);
+  worldToGrid = (x, y) => createVector(Math.round(x / cellSize), Math.round(y / cellSize));
+  screenToGrid = (x, y) => {
+    const world = screenToWorld(x, y);
+    return worldToGrid(world.x, world.y);
+  };
+  gridToWorld = (x, y) => createVector(x * cellSize, y * cellSize);
+}
 
-  for(let j = 0; j <= height / cellSize; j++) {
-    cells[j] = [];
-    for(let i = 0; i <= width / cellSize; i++) {
-      createCell(i, j);
+// x and y are in screen coords
+const applyPencil = (x, y) => {
+  const worldPos = screenToWorld(x, y);
+  const gridPos = worldToGrid(worldPos.x, worldPos.y);
+  const maxDistance = pencilSize * cellSize;
+
+  for (let j = -pencilSize; j <= pencilSize; j++) {
+    for (let i = -pencilSize; i <= pencilSize; i++) {
+      const cellGridPos = gridPos.copy().add(createVector(i, j));
+      const cellWorldPos = gridToWorld(cellGridPos.x, cellGridPos.y);
+      const distance = dist(cellWorldPos.x, cellWorldPos.y, worldPos.x, worldPos.y);
+      const distanceFactor = clamp(distance / maxDistance, 0, 1);
+      const inverseDistanceFactor = 1 - distanceFactor;
+      const strengthFactor = maxDistance > 0 ? inverseDistanceFactor : 1;
+      const strength = pencilStrength * strengthFactor;
+
+      modifyCell(cellGridPos.x, cellGridPos.y, strength);
     }
   }
+}
+
+// x and y are in grid coords
+const modifyCell = (x, y, strength) => {
+  setCell(x, y, lerp(getCell(x, y), mouseClickType, strength));
+}
+
+const increaseMouseClickType = (increase) => {
+  // Calculate the current index based on the currently chosen value (has decimals)
+  let mouseClickIndex = mouseClickType * (mouseClickTypes.length - 1);
+
+  // Increase or decrease the index by 1
+  mouseClickIndex += increase;
+
+  // FIXME: Doesn't work right when picking via middle mouse
+  // Round the index, if need be
+  mouseClickIndex = Math.round(mouseClickIndex);
+
+  // Make sure it's between 0 and the max value
+  mouseClickIndex = clamp(mouseClickIndex, 0, mouseClickTypes.length - 1)
+
+  mouseClickType = mouseClickTypes[mouseClickIndex];
+  console.log('Set value to', mouseClickType);
 }
 
 // ---------- MOUSE HANDLING ----------
 
 function mouseWheel(event) {
-  mouseClickIndex -= Math.sign(event.delta);
-  mouseClickIndex = clamp(mouseClickIndex, 0, mouseClickTypes.length - 1)
-
-  mouseClickType = mouseClickTypes[mouseClickIndex];
-  console.log('Set value to', mouseClickType);
+  increaseMouseClickType(-Math.sign(event.delta));
 
   // Return FALSE to block page scrolling
   return false;
@@ -301,11 +342,13 @@ function mousePressed(event) {
   if (event.which === 1) {
     mouseDown = true;
     
-    const worldPos = screenToWorld(event.x, event.y);
+    applyPencil(event.x, event.y);
+  } else if (event.which === 2) {
+    const {x, y} = screenToGrid(event.x, event.y);
 
-    const mouseGridX = Math.round(worldPos.x / cellSize);
-    const mouseGridY = Math.round(worldPos.y / cellSize);
-    setCell(mouseGridX, mouseGridY, mouseClickType);
+    // FIXME: Doesn't work right
+    mouseClickType = getCell(x, y) * (mouseClickTypes.length - 1);
+    increaseMouseClickType(0);
   }
 }
 
@@ -339,13 +382,9 @@ function draw() {
   viewport.gridWidth = Math.ceil(width / cellSize);
   viewport.gridHeight = Math.ceil(height / cellSize);
   viewport.offset = createVector(viewport.x, viewport.y).mult(-1);
-    
-  const worldPos = screenToWorld(mouseX, mouseY);
-  const mouseGridX = Math.round(worldPos.x / cellSize);
-  const mouseGridY = Math.round(worldPos.y / cellSize);
 
   if (mouseDown) {
-    setCell(mouseGridX, mouseGridY, mouseClickType);
+    applyPencil(mouseX, mouseY);
   }
 
   background(0);
@@ -396,11 +435,9 @@ function draw() {
   //     }
   //   }
   // }
-
-  const mouseScreenPos = worldToScreen(mouseGridX * cellSize, mouseGridY * cellSize);
-
+  
   stroke(255 - mouseClickType * 255);
   strokeWeight(1);
   fill(mouseClickType * 255);
-  circle(mouseScreenPos.x, mouseScreenPos.y, cellSize);
+  circle(mouseX, mouseY, (pencilSize + 1) * cellSize);
 }
