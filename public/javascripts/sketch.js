@@ -1,7 +1,18 @@
-let grid = {};
+// All the cells in the world
+let cells = {};
+
+// All the chunks in the world
+let chunks = {};
+
+// Method to construct a key for 'cells' or 'chunks'
+const getKey = (x, y) => x + ' ' + y;
 
 // Cell size in pixels (width and height)
 let cellSize = 40;
+
+// Chunk size in cells (width and height)
+// Big chunks means less chunks to draw, but a bigger image to render/reconstruct when modifying a chunk
+let chunkSize = 4
 
 // Scale of the OpenSimplexNoise
 let noiseScale = 10;
@@ -224,11 +235,13 @@ const isWall = (value, level) => {
   return Math.floor(value * levels) >= level ? 1 : 0;
 }
 
-const getKey = (x, y) => x + ' ' + y
+const getCell = (x, y) => cells[getKey(x, y)];
 
-const getCell = (x, y) => grid[getKey(x, y)];
+const setCell = (x, y, value) => {
+  cells[getKey(x, y)] = value
 
-const setCell = (x, y, value) => grid[getKey(x, y)] = value;
+  // TODO: renderChunk();
+};
 
 const getNoiseValue = (x, y) => openSimplex.noise2D(x / noiseScale, y / noiseScale) + 0.5;
 
@@ -239,6 +252,18 @@ const createCell = (x, y) => {
 
   return getCell(x, y);
 }
+
+// Draws the saved image on the screen
+const drawChunk = (x, y) => {
+  // TODO: Implement
+};
+
+// TODO: Maybe have a slight delay in case more cells in the same chunk get edited
+// TODO: Maybe make it so chunks combine into bigger and bigger chunks over time and split down into small chunks and smaller when you edit one or more cells
+// Renders all the cells in a chunk to an image and saves it
+const renderChunk = (x, y) => {
+  // TODO: Implement
+};
 
 function setup() {
   frameRate(60);
@@ -251,7 +276,7 @@ function setup() {
   worldToScreen = (x, y) => createVector(x, y).add(viewport.offset);
 
   for(let j = 0; j <= height / cellSize; j++) {
-    grid[j] = [];
+    cells[j] = [];
     for(let i = 0; i <= width / cellSize; i++) {
       createCell(i, j);
     }
