@@ -8,7 +8,7 @@ let chunks = {};
 const getKey = (x, y) => x + ' ' + y;
 
 // Cell size in pixels (width and height)
-let cellSize = 40;
+let cellSize = 64;
 
 // Chunk size in cells (width and height)
 // Big chunks means less chunks to draw, but a bigger image to render/reconstruct when modifying a chunk
@@ -56,175 +56,238 @@ const viewport = {
 let screenToWorld;
 let worldToScreen;
 
+// Returns a scaled-up copy
+const scaleImage = (image, scale) => {
+  textureMode(IMAGE);
+  const width = image.width * scale;
+  const height = image.height * scale;
+
+  const temp = createImage(width, height);
+
+  image.loadPixels();
+  temp.loadPixels();
+  for (let j = 0; j < height; j++) {
+    for (let i = 0; i < width; i++) {
+      const x = Math.floor(i / scale);
+      const y = Math.floor(j / scale);
+      const c = image.get(x, y);
+      temp.set(i, j, c);
+    }
+  }
+  image.updatePixels();
+  temp.updatePixels();
+
+  return temp;
+};
+
 const drawLine = (a, b) => {
   stroke('white');
   strokeWeight(1);
   line(a.x, a.y, b.x, b.y);
-}
-
-const vtx = (corner) => {
-  return vertex(corner.x, corner.y);
 };
 
-const edge = (cornerA, cornerB, valueA, valueB) => {
-  const avg = (valueA + valueB) * 0.5;
+// offset is normalized to cell size
+const vtx = (canvas, gridPos, offset) => {
+  // const coords = gridPos.copy().add(offset).mult(cellSize).add(viewport.offset);
+  const coords = offset.copy().mult(cellSize);
+  const uv = offset.copy().mult(cellSize);
+
+  // return vertex(coords.x, coords.y, offset.x, offset.y);
+  // return canvas.vertex(coords.x, coords.y, uv.x, uv.y);
+  return canvas.vertex(coords.x, coords.y, uv.x, uv.y);
+};
+
+const edge = (canvas, gridPos, cornerA, cornerB, valueA, valueB) => {
+  // const avg = (valueA + valueB) * 0.5;
   // const diff = cornerB.sub()
   // return vtx(createVector());
-  // const avg = 0.5;
+  const avg = 0.5;
   if (isNaN(avg)) {
     console.error('avg is NaN:', valueA, valueB);
   }
-  vtx(cornerB.copy().sub(cornerA).mult(avg).add(cornerA));
+  vtx(canvas, gridPos, cornerB.copy().sub(cornerA).mult(avg).add(cornerA));
 };
 
-const drawState = (state, color, nwValue, neValue, seValue, swValue, nw, ne, se, sw, n, e, s, w) => {
-  noStroke();
-  fill(color);
+let cellRenderer;
+
+const renderCell = (state, color, level, nwValue, neValue, seValue, swValue, gridPos, nw, ne, se, sw, n, e, s, w) => {
+  // noStroke();
+  // fill(color);
+  //tint(color, color, color);
+
+
+  if (!cellRenderer) {
+    cellRenderer = createGraphics(cellSize, cellSize, WEBGL)
+    cellRenderer.translate(cellSize / -2, cellSize / -2);
+  }
+
+  const canvas = cellRenderer;
+  canvas.clear();
+  canvas.textureWrap(REPEAT, REPEAT);
+  canvas.textureMode(IMAGE);
+  canvas.texture(wallTexture);
+
   switch(state) {
     case 0b0001:
-      beginShape();
-      edge(nw, sw, nwValue, swValue);
-      edge(sw, se, swValue, seValue);
-      vtx(sw);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, sw, nwValue, swValue);
+      edge(canvas, gridPos, sw, se, swValue, seValue);
+      vtx(canvas, gridPos, sw);
+      canvas.endShape(CLOSE);
       // drawLine(w, s);
       break;
     case 0b0010:
-      beginShape();
-      edge(sw, se, swValue, seValue);
-      edge(ne, se, neValue, seValue);
-      vtx(se);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, sw, se, swValue, seValue);
+      edge(canvas, gridPos, ne, se, neValue, seValue);
+      vtx(canvas, gridPos, se);
+      canvas.endShape(CLOSE);
       // drawLine(e, s);
       break;
     case 0b0011:
-      beginShape();
-      edge(nw, sw, nwValue, swValue);
-      edge(ne, se, neValue, seValue);
-      vtx(se);
-      vtx(sw);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, sw, nwValue, swValue);
+      edge(canvas, gridPos, ne, se, neValue, seValue);
+      vtx(canvas, gridPos, se);
+      vtx(canvas, gridPos, sw);
+      canvas.endShape(CLOSE);
       // drawLine(w, e);
       break;
     case 0b0100:
-      beginShape();
-      edge(nw, ne, nwValue, neValue);
-      vtx(ne);
-      edge(ne, se, neValue, seValue);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, ne, nwValue, neValue);
+      vtx(canvas, gridPos, ne);
+      edge(canvas, gridPos, ne, se, neValue, seValue);
+      canvas.endShape(CLOSE);
       // drawLine(n, e);
       break;
     case 0b0101:
-      beginShape();
-      edge(nw, ne, nwValue, neValue);
-      vtx(ne);
-      edge(ne, se, neValue, seValue);
-      endShape(CLOSE);
-      beginShape();
-      edge(nw, sw, nwValue, swValue);
-      edge(sw, se, swValue, seValue);
-      vtx(sw);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, ne, nwValue, neValue);
+      vtx(canvas, gridPos, ne);
+      edge(canvas, gridPos, ne, se, neValue, seValue);
+      canvas.endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, sw, nwValue, swValue);
+      edge(canvas, gridPos, sw, se, swValue, seValue);
+      vtx(canvas, gridPos, sw);
+      canvas.endShape(CLOSE);
       // drawLine(n, e);
       // drawLine(w, s);
       break;
     case 0b0110:
-      beginShape();
-      edge(nw, ne, nwValue, neValue);
-      vtx(ne);
-      vtx(se);
-      edge(sw, se, swValue, seValue);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, ne, nwValue, neValue);
+      vtx(canvas, gridPos, ne);
+      vtx(canvas, gridPos, se);
+      edge(canvas, gridPos, sw, se, swValue, seValue);
+      canvas.endShape(CLOSE);
       // drawLine(n, s);
       break;
     case 0b0111:
-      beginShape();
-      edge(nw, ne, nwValue, neValue);
-      vtx(ne);
-      vtx(se);
-      vtx(sw);
-      edge(nw, sw, nwValue, swValue);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, ne, nwValue, neValue);
+      vtx(canvas, gridPos, ne);
+      vtx(canvas, gridPos, se);
+      vtx(canvas, gridPos, sw);
+      edge(canvas, gridPos, nw, sw, nwValue, swValue);
+      canvas.endShape(CLOSE);
       // drawLine(n, w);
       break;
     case 0b1000:
-      beginShape();
-      edge(nw, ne, nwValue, neValue);
-      edge(nw, sw, nwValue, swValue);
-      vtx(nw);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, ne, nwValue, neValue);
+      edge(canvas, gridPos, nw, sw, nwValue, swValue);
+      vtx(canvas, gridPos, nw);
+      canvas.endShape(CLOSE);
       // drawLine(n, w);
       break;
     case 0b1001:
-      beginShape();
-      edge(nw, ne, nwValue, neValue);
-      edge(sw, se, swValue, seValue);
-      vtx(sw);
-      vtx(nw);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, ne, nwValue, neValue);
+      edge(canvas, gridPos, sw, se, swValue, seValue);
+      vtx(canvas, gridPos, sw);
+      vtx(canvas, gridPos, nw);
+      canvas.endShape(CLOSE);
       // drawLine(n, s);
       break;
     case 0b1010:
-      beginShape();
-      edge(nw, ne, nwValue, neValue);
-      edge(nw, sw, nwValue, swValue);
-      vtx(nw);
-      endShape(CLOSE);
-      beginShape();
-      edge(ne, se, neValue, seValue);
-      vtx(se);
-      edge(sw, se, swValue, seValue);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, ne, nwValue, neValue);
+      edge(canvas, gridPos, nw, sw, nwValue, swValue);
+      vtx(canvas, gridPos, nw);
+      canvas.endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, ne, se, neValue, seValue);
+      vtx(canvas, gridPos, se);
+      edge(canvas, gridPos, sw, se, swValue, seValue);
+      canvas.endShape(CLOSE);
       // drawLine(n, w);
       // drawLine(e, s);
       break;
     case 0b1011:
-      beginShape();
-      edge(nw, ne, nwValue, neValue);
-      edge(ne, se, neValue, seValue);
-      vtx(se);
-      vtx(sw);
-      vtx(nw);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, nw, ne, nwValue, neValue);
+      edge(canvas, gridPos, ne, se, neValue, seValue);
+      vtx(canvas, gridPos, se);
+      vtx(canvas, gridPos, sw);
+      vtx(canvas, gridPos, nw);
+      canvas.endShape(CLOSE);
       // drawLine(n, e);
       break;
     case 0b1100:
-      beginShape();
-      vtx(nw);
-      vtx(ne);
-      edge(ne, se, neValue, seValue);
-      edge(nw, sw, nwValue, swValue);
-      endShape(CLOSE);
+      canvas.beginShape();
+      vtx(canvas, gridPos, nw);
+      vtx(canvas, gridPos, ne);
+      edge(canvas, gridPos, ne, se, neValue, seValue);
+      edge(canvas, gridPos, nw, sw, nwValue, swValue);
+      canvas.endShape(CLOSE);
       // drawLine(w, e);
       break;
     case 0b1101:
-      beginShape();
-      edge(ne, se, neValue, seValue);
-      edge(sw, se, swValue, seValue);
-      vtx(sw);
-      vtx(nw);
-      vtx(ne);
-      endShape(CLOSE);
+      canvas.beginShape();
+      edge(canvas, gridPos, ne, se, neValue, seValue);
+      edge(canvas, gridPos, sw, se, swValue, seValue);
+      vtx(canvas, gridPos, sw);
+      vtx(canvas, gridPos, nw);
+      vtx(canvas, gridPos, ne);
+      canvas.endShape(CLOSE);
       // drawLine(e, s);
       break;
     case 0b1110:
-      beginShape();
-      vtx(nw);
-      vtx(ne);
-      vtx(se);
-      edge(sw, se, swValue, seValue);
-      edge(nw, sw, nwValue, swValue);
-      endShape(CLOSE);
+      canvas.beginShape();
+      vtx(canvas, gridPos, nw);
+      vtx(canvas, gridPos, ne);
+      vtx(canvas, gridPos, se);
+      edge(canvas, gridPos, sw, se, swValue, seValue);
+      edge(canvas, gridPos, nw, sw, nwValue, swValue);
+      canvas.endShape(CLOSE);
       // drawLine(w, s);
       break;
     case 0b1111:
-      beginShape();
-      vtx(nw);
-      vtx(ne);
-      vtx(se);
-      vtx(sw);
-      endShape(CLOSE);
+      canvas.beginShape();
+      vtx(canvas, gridPos, nw);
+      vtx(canvas, gridPos, ne);
+      vtx(canvas, gridPos, se);
+      vtx(canvas, gridPos, sw);
+      canvas.endShape(CLOSE);
   }
+
+
+
+  const img = createImage(canvas.width, canvas.height);
+  img.copy(canvas, canvas.width / -2, canvas.height / -2, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+
+  // canvas.noStroke();
+  // // canvas.rect(0, 0, cellSize, cellSize);
+  // canvas.beginShape();
+  // vtx(canvas, gridPos, nw);
+  // vtx(canvas, gridPos, ne);
+  // vtx(canvas, gridPos, se);
+  // vtx(canvas, gridPos, sw);
+  // canvas.endShape(CLOSE);
+
+  return img;
 }
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -233,26 +296,55 @@ const sample = (value, level) => {
   return value;
 }
 
-const isWall = (value, level) => {
-  return Math.floor(value * levels) >= level ? 1 : 0;
-}
+const isWall = (value, level) => Math.floor(value * levels) >= level ? 1 : 0;
+
+const getNoiseValue = (x, y) => openSimplex.noise2D(x / noiseScale, y / noiseScale) * 0.5 + 0.5;
 
 const getCell = (x, y) => cells[getKey(x, y)];
 
-const setCell = (x, y, value) => {
-  cells[getKey(x, y)] = value
+const getCellValue = (x, y) => getCell(x, y)?.value;
+
+const getCellImage = (x, y) => getCell(x, y)?.image;
+
+const setCell = (x, y, cell) => {
+  cells[getKey(x, y)] = cell;
 
   // TODO: renderChunk();
 };
 
-const getNoiseValue = (x, y) => openSimplex.noise2D(x / noiseScale, y / noiseScale) + 0.5;
+const setCellValue = (x, y, value) => {
+  const cell = cells[getKey(x, y)];
 
-const createCell = (x, y) => {
-  if (getCell(x, y) == null) {
-    setCell(x, y, getNoiseValue(x, y));
+  if (cell) {
+    cell.value = value;
   }
 
-  return getCell(x, y);
+  // TODO: renderChunk();
+};
+
+const setCellImage = (x, y, image) => {
+  const cell = cells[getKey(x, y)];
+
+  if (cell) {
+    cell.image = image;
+  }
+
+  // TODO: renderChunk();
+};
+
+const createCell = (x, y) => {
+  const cell = getCell(x, y);
+
+  if (cell) {
+    return cell;
+  }
+
+  const newCell = {
+    value: getNoiseValue(x, y)
+  };
+  setCell(x, y, newCell);
+
+  return newCell;
 }
 
 // Draws the saved image on the screen
@@ -267,21 +359,37 @@ const renderChunk = (x, y) => {
   // TODO: Implement
 };
 
+let wallTexture;
+let floorTexture;
+
+function preload() {
+  floorTexture = loadImage('../assets/deepslate.png');
+  wallTexture = loadImage('../assets/stone.png');
+}
+
 function setup() {
   frameRate(60);
-  createCanvas(windowWidth, windowHeight);
+  createCanvas(windowWidth, windowHeight, WEBGL);
+
+  floorTexture = scaleImage(floorTexture, 4);
+  wallTexture = scaleImage(wallTexture, 4);
+
   // noSmooth();
   // openSimplex = openSimplexNoise(random(42));
   openSimplex = openSimplexNoise(41);
 
   screenToWorld = (x, y) => createVector(x, y).sub(viewport.offset);
   worldToScreen = (x, y) => createVector(x, y).add(viewport.offset);
-  worldToGrid = (x, y) => createVector(Math.round(x / cellSize), Math.round(y / cellSize));
+  worldToGrid = (x, y) => createVector(Math.floor(x / cellSize), Math.floor(y / cellSize));
   screenToGrid = (x, y) => {
     const world = screenToWorld(x, y);
     return worldToGrid(world.x, world.y);
   };
   gridToWorld = (x, y) => createVector(x * cellSize, y * cellSize);
+  gridToScreen = (x, y) => {
+    const world = gridToWorld(x, y);
+    return worldToScreen(world.x, world.y);
+  };
 }
 
 // x and y are in screen coords
@@ -307,7 +415,8 @@ const applyPencil = (x, y) => {
 
 // x and y are in grid coords
 const modifyCell = (x, y, strength) => {
-  setCell(x, y, lerp(getCell(x, y), mouseClickType, strength));
+  setCellValue(x, y, lerp(getCellValue(x, y), mouseClickType, strength));
+  setCellImage(x, y, null);
 }
 
 const increaseMouseClickType = (increase) => {
@@ -347,7 +456,7 @@ function mousePressed(event) {
     const {x, y} = screenToGrid(event.x, event.y);
 
     // FIXME: Doesn't work right
-    mouseClickType = getCell(x, y) * (mouseClickTypes.length - 1);
+    mouseClickType = getCellValue(x, y) * (mouseClickTypes.length - 1);
     increaseMouseClickType(0);
   }
 }
@@ -360,6 +469,7 @@ function mouseReleased(event) {
 }
 
 function draw() {
+  translate(windowWidth / -2, windowHeight / -2);
 
   if (keyIsDown(LEFT_ARROW)) {
     viewport.x -= cameraSpeed;
@@ -387,57 +497,67 @@ function draw() {
     applyPencil(mouseX, mouseY);
   }
 
-  background(0);
-  for(let l = 0; l < levels; l++) {
-    for(let j = viewport.gridY - cameraPadding; j < viewport.gridY + viewport.gridHeight + cameraPadding; j++) {
-      for(let i = viewport.gridX - cameraPadding; i < viewport.gridX + viewport.gridWidth + cameraPadding; i++) {
+  background(80);
+  // for(let l = 0; l < levels; l++) {
+  const l = 1;
+  for(let j = viewport.gridY - cameraPadding; j < viewport.gridY + viewport.gridHeight + cameraPadding; j++) {
+    for(let i = viewport.gridX - cameraPadding; i < viewport.gridX + viewport.gridWidth + cameraPadding; i++) {
 
-        createCell(i, j);
-        createCell(i + 1, j);
-        createCell(i + 1, j + 1);
-        createCell(i, j + 1);
+      createCell(i, j);
+      createCell(i + 1, j);
+      createCell(i + 1, j + 1);
+      createCell(i, j + 1);
 
-        const nwValue = sample(getCell(i, j), l);
-        const neValue = sample(getCell(i + 1, j), l);
-        const seValue = sample(getCell(i + 1, j + 1), l);
-        const swValue = sample(getCell(i, j + 1), l);
+      const gridPos = createVector(i, j);
 
-        const state = isWall(getCell(i, j), l) * 8
-          + isWall(getCell(i + 1, j), l) * 4
-          + isWall(getCell(i + 1, j + 1), l) * 2
-          + isWall(getCell(i, j + 1), l);
+      if (!getCell(i,j).image) {
+        const nwValue = sample(getCellValue(i, j), l);
+        const neValue = sample(getCellValue(i + 1, j), l);
+        const seValue = sample(getCellValue(i + 1, j + 1), l);
+        const swValue = sample(getCellValue(i, j + 1), l);
 
-        const nw = createVector(i, j).mult(cellSize).add(viewport.offset);
-        const n = createVector(i + 0.5, j).mult(cellSize).add(viewport.offset);
-        const ne = createVector(i + 1, j).mult(cellSize).add(viewport.offset);
-        const e = createVector(i + 1, j + 0.5).mult(cellSize).add(viewport.offset);
-        const se = createVector(i + 1, j + 1).mult(cellSize).add(viewport.offset);
-        const s = createVector(i + 0.5, j + 1).mult(cellSize).add(viewport.offset);
-        const sw = createVector(i, j + 1).mult(cellSize).add(viewport.offset);
-        const w = createVector(i, j + 0.5).mult(cellSize).add(viewport.offset);
+        const state = isWall(getCellValue(i, j), l) * 8
+          + isWall(getCellValue(i + 1, j), l) * 4
+          + isWall(getCellValue(i + 1, j + 1), l) * 2
+          + isWall(getCellValue(i, j + 1), l);
 
-        drawState(state, l / (levels - 1) * 255, nwValue, neValue, seValue, swValue, nw, ne, se, sw, n, e, s, w);
+        const nw = createVector(0, 0);
+        const n = createVector(0.5, 0);
+        const ne = createVector(1, 0);
+        const e = createVector(1, 0.5);
+        const se = createVector(1, 1);
+        const s = createVector(0.5, 1);
+        const sw = createVector(0, 1);
+        const w = createVector(0, 0.5);
+
+        const img = renderCell(state, l / (levels - 1) * 255, l, nwValue, neValue, seValue, swValue, gridPos, nw, ne, se, sw, n, e, s, w);
+        setCellImage(i, j, img);
       }
+
+      const coords = gridPos.copy().mult(cellSize).add(viewport.offset);
+      image(getCellImage(i, j), coords.x, coords.y);
     }
   }
 
-  // for(let l = 0; l < levels; l++) {
-  //   for(let j = viewport.gridY - cameraPadding; j < viewport.gridY + viewport.gridHeight + cameraPadding; j++) {
-  //     for(let i = viewport.gridX - cameraPadding; i < viewport.gridX + viewport.gridWidth + cameraPadding; i++) {
-
-  //       createCell(i, j);
-
-  //       const cell = getCell(i, j);
-  //       stroke(255 - cell * 255);
-  //       strokeWeight(1);
-  //       fill(cell * 255);
-  //       circle(i * cellSize, j * cellSize, cellSize * 0.4);
-  //     }
+  // for(let j = viewport.gridY - cameraPadding; j < viewport.gridY + viewport.gridHeight + cameraPadding; j++) {
+  //   for(let i = viewport.gridX - cameraPadding; i < viewport.gridX + viewport.gridWidth + cameraPadding; i++) {
+  //     const cell = getCellValue(i, j);
+  //     stroke(255 - cell * 255);
+  //     strokeWeight(1);
+  //     fill(cell * 255);
+  //     const coords = createVector(i, j).mult(cellSize).add(viewport.offset);
+  //     circle(coords.x, coords.y, cellSize * 0.4);
   //   }
   // }
   
-  stroke(255 - mouseClickType * 255);
+  const m = screenToGrid(mouseX, mouseY);
+  // image(getCellImage(m.x, m.y), mouseX, mouseY);
+
+  const mScreen = gridToScreen(m.x, m.y);
+  stroke('white');
   strokeWeight(1);
-  fill(mouseClickType * 255);
+  noFill();
   circle(mouseX, mouseY, (pencilSize + 1) * cellSize);
+
+  rect(mScreen.x, mScreen.y, cellSize, cellSize);
 }
