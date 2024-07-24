@@ -113,14 +113,14 @@ const edge = (canvas, gridPos, cornerA, cornerB, valueA, valueB) => {
 
 let cellRenderer;
 
-const cellRenderCache = {};
+const stateRenderCache = {};
 
 const renderCell = (state, color, level, nwValue, neValue, seValue, swValue, gridPos, nw, ne, se, sw, n, e, s, w) => {
   // noStroke();
   // fill(color);
   //tint(color, color, color);
 
-  const cachedValue = cellRenderCache[state];
+  const cachedValue = stateRenderCache[state];
 
   if (cachedValue) {
     return cachedValue;
@@ -296,7 +296,7 @@ const renderCell = (state, color, level, nwValue, neValue, seValue, swValue, gri
   // vtx(canvas, gridPos, sw);
   // canvas.endShape(CLOSE);
 
-  cellRenderCache[state] = img;
+  stateRenderCache[state] = img;
 
   return img;
 }
@@ -483,12 +483,14 @@ const renderChunk = (chunk, force) => {
   }
 
   if (chunk.image) {
-    // If we already have an image, just return that 
+    // If we already have an image, just return that
     return chunk.image;
   } else if (chunk.size > 0) {
     // Render all child chunks and stitch their image together
     const size = Math.pow(2, chunk.size) * cellSize;
     const img = createImage(size, size);
+
+    // TODO: save a combined state (maybe as 16^0, 16^1, 16^2, 16^3 x sub-chunk state) on chunks, and use stateRenderCache to save combined images
 
     for (let child of Object.values(chunk.children)) {
       const coords = createVector(child.gridX - chunk.gridX, child.gridY - chunk.gridY).mult(cellSize)
@@ -706,7 +708,7 @@ function mousePressed(event) {
   // We only care for left-clicks
   if (event.which === 1) {
     mouseDown = true;
-    
+
     applyPencil(event.x, event.y);
   } else if (event.which === 2) {
     const {x, y} = screenToGrid(event.x, event.y);
@@ -798,7 +800,7 @@ function draw() {
   //     circle(coords.x, coords.y, cellSize * 0.4);
   //   }
   // }
-  
+
   const m = screenToGrid(mouseX, mouseY);
   // image(getCellImage(m.x, m.y), mouseX, mouseY);
 
